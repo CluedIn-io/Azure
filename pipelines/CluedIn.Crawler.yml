@@ -122,18 +122,14 @@ jobs:
           - ${{ each pair in step }}:
               ${{ pair.key }}: ${{ pair.value }}
 
-      - task: PublishBuildArtifacts@1
+      - publish: $(logsDir)
         displayName: Publish Logs
         condition: succeededOrFailed()
         continueOnError: true
-        inputs:
-          pathToPublish: $(logsDir)
-          artifactName: logs
+        artifact: logs
 
-      - task: PublishBuildArtifacts@1
+      - publish: $(nugetDir)
         displayName: Publish Nuget
         condition: succeededOrFailed()
         continueOnError: true
-        inputs:
-          pathToPublish: $(nugetDir)
-          artifactName: nuget
+        artifact: nuget
