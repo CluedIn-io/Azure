@@ -37,7 +37,16 @@ When added as part of your pipeline, the crawler job will perform the following 
 1. Generate and publish code coverage reports
 1. Run pack on the projects under the given root directory
 1. Publish packed projects as a build asset
-> Users can inject additional steps before build, after build, after test, and after pack
+
+#### Parameters
+A series of parameters are available to modify the template, including:
++ `configuration` - the build configuration
++ `version` - the version to be built
++ `testsEnabled` - enables/disables the inclusion of test functionality
++ Several parameters to _inject_ additional steps
+... and more.
+
+> Please review the [start of the template](CluedIn.Crawler.yml) where parameters are declared
 
 ### Example usage
 ```yaml
@@ -46,4 +55,5 @@ jobs:
     parameters:
       configuration: Release
       version: 1.0.0
+      testsEnabled: false
 ```
