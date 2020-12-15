@@ -23,6 +23,9 @@ parameters:
     type: stepList
     displayName: Additional steps to run after build but before test
     default: []
+  - name: testsEnabled
+    default: true
+    displayName: Set to false to disable test tasks
   - name: postTest
     type: stepList
     displayName: Additional steps to run after test but before pack
@@ -81,39 +84,41 @@ jobs:
           - ${{ each pair in step }}:
               ${{ pair.key }}: ${{ pair.value }}
 
-      - script: dotnet test $(dotnetDefaults)  --no-build /bl:$(logsDir)/test.binlog -r $(testsDir)/Unit --logger trx --collect:"XPlat Code Coverage"
-        displayName: Dotnet Test
+      - ${{ if eq(parameters.testsEnabled, true) }}:
 
-      - ${{ each step in parameters.postTest }}:
-          - ${{ each pair in step }}:
-              ${{ pair.key }}: ${{ pair.value }}
+        - script: dotnet test $(dotnetDefaults) --no-build /bl:$(logsDir)/test.binlog -r $(testsDir)/Unit --logger trx --collect:"XPlat Code Coverage"
+          displayName: Dotnet Test
 
-      - task: PublishTestResults@2
-        displayName: Publish Tests
-        condition: succeededOrFailed()
-        continueOnError: true
-        inputs:
-          testResultsFormat: 'VSTest'
-          testResultsFiles: '**/*.trx'
-          searchFolder: $(testsDir)
-          testRunTitle: Unit Tests
+        - ${{ each step in parameters.postTest }}:
+            - ${{ each pair in step }}:
+                ${{ pair.key }}: ${{ pair.value }}
 
-      # REQUIRES: https://marketplace.visualstudio.com/items?itemName=Palmmedia.reportgenerator
-      - task: reportgenerator@4
-        displayName: Generate Coverage Report
-        condition: succeededOrFailed()
-        inputs:
-          reports: '$(testsDir)/**/*.cobertura.xml'
-          targetdir: '$(testsDir)/coveragereport'
-          tag: '$(build.buildnumber)'
+        - task: PublishTestResults@2
+          displayName: Publish Tests
+          condition: succeededOrFailed()
+          continueOnError: true
+          inputs:
+            testResultsFormat: 'VSTest'
+            testResultsFiles: '**/*.trx'
+            searchFolder: $(testsDir)
+            testRunTitle: Unit Tests
 
-      - task: PublishCodeCoverageResults@1
-        displayName: Publish Coverage Report
-        condition: succeededOrFailed()
-        inputs:
-          codeCoverageTool: Cobertura
-          summaryFileLocation: '$(testsDir)/coveragereport/Cobertura.xml'
-          reportDirectory: '$(testsDir)/coveragereport'
+        # REQUIRES: https://marketplace.visualstudio.com/items?itemName=Palmmedia.reportgenerator
+        - task: reportgenerator@4
+          displayName: Generate Coverage Report
+          condition: succeededOrFailed()
+          inputs:
+            reports: '$(testsDir)/**/*.cobertura.xml'
+            targetdir: '$(testsDir)/coveragereport'
+            tag: '$(build.buildnumber)'
+
+        - task: PublishCodeCoverageResults@1
+          displayName: Publish Coverage Report
+          condition: succeededOrFailed()
+          inputs:
+            codeCoverageTool: Cobertura
+            summaryFileLocation: '$(testsDir)/coveragereport/Cobertura.xml'
+            reportDirectory: '$(testsDir)/coveragereport'
 
       - script: dotnet pack $(dotnetDefaults) -o $(nugetDir) --no-build /bl:$(logsDir)/pack.binlog
         displayName: Dotnet Pack
