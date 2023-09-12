@@ -1,0 +1,571 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.15.31.15270",
+      "templateHash": "4392261770172730054"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "The location of the Managed Cluster resourc"
+      }
+    },
+    "storageAccountName": {
+      "type": "string",
+      "defaultValue": "[format('store{0}', uniqueString(resourceGroup().id))]",
+      "metadata": {
+        "description": "Specifies the name of the Azure Storage account."
+      }
+    },
+    "containerName": {
+      "type": "string",
+      "defaultValue": "backup",
+      "metadata": {
+        "description": "Specifies the name of the blob container."
+      }
+    },
+    "aksclusterName": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "aksrg": {
+      "type": "string",
+      "defaultValue": ""
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2022-09-01",
+      "name": "[parameters('storageAccountName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "properties": {
+        "accessTier": "Hot"
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts/blobServices",
+      "apiVersion": "2022-09-01",
+      "name": "[format('{0}/{1}', parameters('storageAccountName'), 'default')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+      "apiVersion": "2022-09-01",
+      "name": "[format('{0}/{1}/{2}', parameters('storageAccountName'), 'default', parameters('containerName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('storageAccountName'), 'default')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2020-10-01",
+      "name": "cluedin-backup-vault",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.15.31.15270",
+              "templateHash": "15849964545575328736"
+            }
+          },
+          "parameters": {
+            "vaultName": {
+              "type": "string",
+              "defaultValue": "[format('vault-{0}', uniqueString(resourceGroup().id))]",
+              "metadata": {
+                "description": "Name of the Vault"
+              }
+            },
+            "vaultStorageRedundancy": {
+              "type": "string",
+              "defaultValue": "GeoRedundant",
+              "allowedValues": [
+                "LocallyRedundant",
+                "GeoRedundant"
+              ],
+              "metadata": {
+                "description": "Change Vault Storage Type (not allowed if the vault has registered backups)"
+              }
+            },
+            "backupPolicyName": {
+              "type": "string",
+              "defaultValue": "[format('policy-{0}', uniqueString(resourceGroup().id))]",
+              "metadata": {
+                "description": "Name of the Backup Policy"
+              }
+            },
+            "retentionDays": {
+              "type": "int",
+              "defaultValue": 7,
+              "maxValue": 360,
+              "minValue": 1,
+              "metadata": {
+                "description": "Retention duration in days"
+              }
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]",
+              "metadata": {
+                "description": "Location for all resources"
+              }
+            }
+          },
+          "variables": {
+            "retentionDuration": "[format('P{0}D', parameters('retentionDays'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.DataProtection/backupVaults",
+              "apiVersion": "2021-01-01",
+              "name": "[parameters('vaultName')]",
+              "location": "[parameters('location')]",
+              "identity": {
+                "type": "systemAssigned"
+              },
+              "properties": {
+                "storageSettings": [
+                  {
+                    "datastoreType": "VaultStore",
+                    "type": "[parameters('vaultStorageRedundancy')]"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.DataProtection/backupVaults/backupPolicies",
+              "apiVersion": "2021-01-01",
+              "name": "[format('{0}/{1}', parameters('vaultName'), parameters('backupPolicyName'))]",
+              "properties": {
+                "datasourceTypes": [
+                  "Microsoft.ContainerService/managedClusters"
+                ],
+                "objectType": "BackupPolicy",
+                "policyRules": [
+                  {
+                    "backupParameters": {
+                      "backupType": "Incremental",
+                      "objectType": "AzureBackupParams"
+                    },
+                    "dataStore": {
+                      "dataStoreType": "OperationalStore",
+                      "objectType": "DataStoreInfoBase"
+                    },
+                    "name": "BackupHourly",
+                    "objectType": "AzureBackupRule",
+                    "trigger": {
+                      "objectType": "ScheduleBasedTriggerContext",
+                      "schedule": {
+                        "repeatingTimeIntervals": [
+                          "R/2023-01-04T09:00:00+00:00/PT4H"
+                        ]
+                      },
+                      "taggingCriteria": [
+                        {
+                          "isDefault": true,
+                          "tagInfo": {
+                            "tagName": "Default"
+                          },
+                          "taggingPriority": 99
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "isDefault": true,
+                    "lifecycles": [
+                      {
+                        "deleteAfter": {
+                          "duration": "[variables('retentionDuration')]",
+                          "objectType": "AbsoluteDeleteOption"
+                        },
+                        "sourceDataStore": {
+                          "dataStoreType": "OperationalStore",
+                          "objectType": "DataStoreInfoBase"
+                        }
+                      }
+                    ],
+                    "name": "Default",
+                    "objectType": "AzureRetentionRule"
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DataProtection/backupVaults', parameters('vaultName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "vaultId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.DataProtection/backupVaults', parameters('vaultName'))]"
+            },
+            "vaultName": {
+              "type": "string",
+              "value": "[parameters('vaultName')]"
+            },
+            "backupIdentity": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.DataProtection/backupVaults', parameters('vaultName')), '2021-01-01', 'full').identity.principalId]"
+            },
+            "backupPolicy": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.DataProtection/backupVaults/backupPolicies', parameters('vaultName'), parameters('backupPolicyName'))]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2020-10-01",
+      "name": "cluedin-backup-roles",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "backupIdentity": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'cluedin-backup-vault'), '2020-10-01').outputs.backupIdentity.value]"
+          },
+          "aksname": {
+            "value": "[parameters('aksclusterName')]"
+          },
+          "aksrg": {
+            "value": "[parameters('aksrg')]"
+          },
+          "vaultId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'cluedin-backup-vault'), '2020-10-01').outputs.vaultId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.15.31.15270",
+              "templateHash": "11513091260259077789"
+            }
+          },
+          "parameters": {
+            "backupIdentity": {
+              "type": "string",
+              "metadata": {
+                "description": "Specifies the location of the identity."
+              }
+            },
+            "aksname": {
+              "type": "string",
+              "metadata": {
+                "description": "Specifies the location of the identity."
+              }
+            },
+            "aksrg": {
+              "type": "string"
+            },
+            "vaultId": {
+              "type": "string",
+              "metadata": {
+                "description": "Specifies the location of the identity."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2020-03-01-preview",
+              "name": "[guid(resourceGroup().id, extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('aksrg')), 'Microsoft.ContainerService/managedClusters', parameters('aksname')), resourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c'))]",
+              "properties": {
+                "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+                "principalId": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('aksrg')), 'Microsoft.ContainerService/managedClusters', parameters('aksname')), '2022-11-01', 'full').identity.principalId]",
+                "principalType": "ServicePrincipal",
+                "scope": "[resourceGroup().id]"
+              }
+            },
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2020-10-01",
+              "name": "aks-trust-access",
+              "resourceGroup": "[parameters('aksrg')]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "vaultId": {
+                    "value": "[parameters('vaultId')]"
+                  },
+                  "aksname": {
+                    "value": "[parameters('aksname')]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.15.31.15270",
+                      "templateHash": "10372007729222239796"
+                    }
+                  },
+                  "parameters": {
+                    "vaultId": {
+                      "type": "string",
+                      "defaultValue": ""
+                    },
+                    "aksname": {
+                      "type": "string",
+                      "defaultValue": ""
+                    }
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.ContainerService/managedClusters/trustedAccessRoleBindings",
+                      "apiVersion": "2022-08-02-preview",
+                      "name": "[format('{0}/cluedin-backup', parameters('aksname'))]",
+                      "properties": {
+                        "roles": [
+                          "Microsoft.DataProtection/backupVaults/backup-operator"
+                        ],
+                        "sourceResourceId": "[parameters('vaultId')]"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2020-10-01",
+              "name": "vault-role-assignment",
+              "resourceGroup": "[parameters('aksrg')]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "backupIdentity": {
+                    "value": "[parameters('backupIdentity')]"
+                  },
+                  "aksname": {
+                    "value": "[parameters('aksname')]"
+                  },
+                  "aksrg": {
+                    "value": "[parameters('aksrg')]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.15.31.15270",
+                      "templateHash": "17766698477028107213"
+                    }
+                  },
+                  "parameters": {
+                    "backupIdentity": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Specifies the location of the identity."
+                      }
+                    },
+                    "aksname": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Specifies the location of the identity."
+                      }
+                    },
+                    "aksrg": {
+                      "type": "string"
+                    }
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.Authorization/roleAssignments",
+                      "apiVersion": "2020-03-01-preview",
+                      "name": "[guid(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('aksrg')), 'Microsoft.ContainerService/managedClusters', parameters('aksname')), parameters('backupIdentity'), resourceId('Microsoft.Authorization/roleDefinitions', 'acdd72a7-3385-48ef-bd42-f606fba81ae7'))]",
+                      "properties": {
+                        "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', 'acdd72a7-3385-48ef-bd42-f606fba81ae7')]",
+                        "principalId": "[parameters('backupIdentity')]",
+                        "principalType": "ServicePrincipal"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'cluedin-backup-vault')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2020-10-01",
+      "name": "cluedin-backup-instance",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "backupPolicy": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'cluedin-backup-vault'), '2020-10-01').outputs.backupPolicy.value]"
+          },
+          "vaultname": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'cluedin-backup-vault'), '2020-10-01').outputs.vaultName.value]"
+          },
+          "aksname": {
+            "value": "[parameters('aksclusterName')]"
+          },
+          "aksrg": {
+            "value": "[parameters('aksrg')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.15.31.15270",
+              "templateHash": "7368468462938644476"
+            }
+          },
+          "parameters": {
+            "backupInstance": {
+              "type": "string",
+              "defaultValue": "[format('Instance{0}', uniqueString(resourceGroup().id))]",
+              "metadata": {
+                "description": "Name of the Backup Policy"
+              }
+            },
+            "friendlyName": {
+              "type": "string",
+              "defaultValue": "cluedin-backup-instance"
+            },
+            "backupPolicy": {
+              "type": "string"
+            },
+            "vaultname": {
+              "type": "string"
+            },
+            "aksname": {
+              "type": "string"
+            },
+            "aksrg": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]",
+              "metadata": {
+                "description": "Location for all resources"
+              }
+            },
+            "resourceGroupId": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().id]"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.DataProtection/backupVaults/backupInstances",
+              "apiVersion": "2022-10-01-preview",
+              "name": "[format('{0}/{1}', parameters('vaultname'), parameters('backupInstance'))]",
+              "properties": {
+                "datasourceAuthCredentials": null,
+                "dataSourceInfo": {
+                  "datasourceType": "Microsoft.ContainerService/managedClusters",
+                  "objectType": "Datasource",
+                  "resourceID": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('aksrg')), 'Microsoft.ContainerService/managedClusters', parameters('aksname'))]",
+                  "resourceLocation": "[parameters('location')]",
+                  "resourceName": "[parameters('aksname')]",
+                  "resourceType": "Microsoft.ContainerService/managedClusters",
+                  "resourceUri": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('aksrg')), 'Microsoft.ContainerService/managedClusters', parameters('aksname'))]"
+                },
+                "dataSourceSetInfo": {
+                  "datasourceType": "Microsoft.ContainerService/managedClusters",
+                  "objectType": "DatasourceSet",
+                  "resourceID": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('aksrg')), 'Microsoft.ContainerService/managedClusters', parameters('aksname'))]",
+                  "resourceLocation": "[parameters('location')]",
+                  "resourceName": "[parameters('aksname')]",
+                  "resourceType": "Microsoft.ContainerService/managedClusters",
+                  "resourceUri": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('aksrg')), 'Microsoft.ContainerService/managedClusters', parameters('aksname'))]"
+                },
+                "friendlyName": "[parameters('friendlyName')]",
+                "objectType": "BackupInstance",
+                "policyInfo": {
+                  "policyId": "[parameters('backupPolicy')]",
+                  "policyParameters": {
+                    "backupDatasourceParametersList": [
+                      {
+                        "objectType": "KubernetesClusterBackupDatasourceParameters",
+                        "includedNamespaces": [
+                          "cluedin"
+                        ],
+                        "excludedNamespaces": null,
+                        "includeClusterScopeResources": true,
+                        "includedResourceTypes": null,
+                        "snapshotVolumes": true
+                      }
+                    ],
+                    "dataStoreParametersList": [
+                      {
+                        "dataStoreType": "OperationalStore",
+                        "objectType": "AzureOperationalStoreParameters",
+                        "resourceGroupId": "[parameters('resourceGroupId')]"
+                      }
+                    ]
+                  }
+                },
+                "validationType": "ShallowValidation"
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'cluedin-backup-vault')]",
+        "[resourceId('Microsoft.Resources/deployments', 'cluedin-backup-roles')]"
+      ]
+    }
+  ]
+}
