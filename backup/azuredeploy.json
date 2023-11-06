@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.15.31.15270",
-      "templateHash": "4392261770172730054"
+      "templateHash": "5046970143287559907"
     }
   },
   "parameters": {
@@ -32,11 +32,17 @@
     },
     "aksclusterName": {
       "type": "string",
-      "defaultValue": ""
+      "defaultValue": "",
+      "metadata": {
+        "description": "Specifies the name of the AKS cluster."
+      }
     },
     "aksrg": {
       "type": "string",
-      "defaultValue": ""
+      "defaultValue": "",
+      "metadata": {
+        "description": "Specifies the name of the AKS cluster resource group."
+      }
     }
   },
   "resources": [
@@ -271,7 +277,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.15.31.15270",
-              "templateHash": "11513091260259077789"
+              "templateHash": "15693384135722981678"
             }
           },
           "parameters": {
@@ -305,6 +311,17 @@
               "properties": {
                 "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
                 "principalId": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('aksrg')), 'Microsoft.ContainerService/managedClusters', parameters('aksname')), '2022-11-01', 'full').identity.principalId]",
+                "principalType": "ServicePrincipal",
+                "scope": "[resourceGroup().id]"
+              }
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2020-03-01-preview",
+              "name": "[guid(resourceGroup().id, parameters('backupIdentity'), resourceId('Microsoft.Authorization/roleDefinitions', 'acdd72a7-3385-48ef-bd42-f606fba81ae7'))]",
+              "properties": {
+                "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', 'acdd72a7-3385-48ef-bd42-f606fba81ae7')]",
+                "principalId": "[parameters('backupIdentity')]",
                 "principalType": "ServicePrincipal",
                 "scope": "[resourceGroup().id]"
               }
